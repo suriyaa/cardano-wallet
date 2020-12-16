@@ -429,4 +429,3 @@ withShelleyServer tracers action = do
             block0
             (gp, vData)
             (act gp)
-            `withException` (traceWith tr . MsgServerError)

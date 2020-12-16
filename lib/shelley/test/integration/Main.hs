@@ -287,7 +287,7 @@ specWithServer testDir (tr, tracers) = aroundAll withContext
             testPoolConfigs
             testDir
             extraLogDir
-            (onClusterStart action testDir dbDecorator)
+            (onClusterStart action dbDecorator)
 
     tr' = contramap MsgCluster tr
     setupFaucet = do
