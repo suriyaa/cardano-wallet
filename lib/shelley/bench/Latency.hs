@@ -405,19 +405,16 @@ withShelleyServer tracers action = do
                 []
                 dir
                 Nothing
-                onByron
-                (afterFork dir)
-                (onClusterStart act db)
-    onByron _ = pure ()
-    afterFork dir _ = do
+                (onClusterStart act dir)
+
+    setupFaucet dir = do
         let encodeAddr = T.unpack . encodeAddress @'Mainnet
         let addresses = map (first encodeAddr) shelleyIntegrationTestFunds
         sendFaucetFundsTo nullTracer dir addresses
 
     onClusterStart act db (RunningNode socketPath block0 (gp, vData)) = do
         listen <- walletListenFromEnv
-        -- NOTE: We may want to keep a wallet running across the fork, but
-        -- having three callbacks like this might not work well for that.
+        setupFaucet dir
         serveWallet
             (SomeNetworkDiscriminant $ Proxy @'Mainnet)
             tracers
@@ -432,3 +429,4 @@ withShelleyServer tracers action = do
             block0
             (gp, vData)
             (act gp)
+            `withException` (traceWith tr . MsgServerError)
