@@ -265,6 +265,7 @@ test-suite unit
     , http-media
     , http-types
     , iohk-monitoring
+    , lattices
     , lens
     , memory
     , network
