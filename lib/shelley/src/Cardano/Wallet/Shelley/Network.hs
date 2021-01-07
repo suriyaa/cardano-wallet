@@ -144,6 +144,8 @@ import Data.Time.Clock
     ( NominalDiffTime, diffUTCTime, getCurrentTime )
 import Data.Void
     ( Void )
+import Data.Word
+    ( Word64 )
 import Fmt
     ( Buildable (..), fmt, listF, mapF, pretty )
 import GHC.Stack
@@ -530,12 +532,14 @@ withNetworkLayer tr np addrInfo (versionData, _) action = do
                     (queue `send` cmd)
                 return $ fromPoolDistr <$> result
 
-            _ -> do
-
-                -- NOTE: Will fail if the era is byron. Making this explicit in
-                -- the pattern match would be nicer, but not sure what error we
-                -- should return.
+            AnyCardanoEra MaryEra -> do
                 let cmd = CmdQueryLocalState pt (QueryIfCurrentMary Shelley.GetStakeDistribution)
+                result <- handleQueryFailure $ timeQryAndLog "GetStakeDistribution" tr
+                    (queue `send` cmd)
+                return $ fromPoolDistr <$> result
+            AnyCardanoEra ByronEra -> do
+                -- FIXME: Fail.
+                let cmd = CmdQueryLocalState pt (QueryIfCurrentShelley Shelley.GetStakeDistribution)
                 result <- handleQueryFailure $ timeQryAndLog "GetStakeDistribution" tr
                     (queue `send` cmd)
                 return $ fromPoolDistr <$> result
@@ -547,32 +551,71 @@ withNetworkLayer tr np addrInfo (versionData, _) action = do
                     (queue `send` cmd)
                 return $ optimumNumberOfPools <$> result
 
-            -- TODO: Allegra
+            AnyCardanoEra AllegraEra -> do
+                let cmd = CmdQueryLocalState pt (QueryIfCurrentAllegra Shelley.GetCurrentPParams)
+                result <- handleQueryFailure $ timeQryAndLog "GetCurrentPParams" tr
+                    (queue `send` cmd)
+                return $ optimumNumberOfPools <$> result
 
-            _ -> do
+            AnyCardanoEra MaryEra -> do
                 let cmd = CmdQueryLocalState pt (QueryIfCurrentMary Shelley.GetCurrentPParams)
                 result <- handleQueryFailure $ timeQryAndLog "GetCurrentPParams" tr
                     (queue `send` cmd)
                 return $ optimumNumberOfPools <$> result
 
+            AnyCardanoEra ByronEra -> do
+                -- FIXME: Simply fail
+                let cmd = CmdQueryLocalState pt (QueryIfCurrentMary Shelley.GetCurrentPParams)
+                result <- handleQueryFailure $ timeQryAndLog "GetCurrentPParams" tr
+                    (queue `send` cmd)
+                return $ optimumNumberOfPools <$> result
+
+        queryNonMyopicMemberRewards
+            :: Point (CardanoBlock StandardCrypto)
+            -> AnyCardanoEra
+            -> ExceptT
+                 ErrNetworkUnavailable
+                 IO
+                 (Either
+                    (MismatchEraInfo (CardanoEras StandardCrypto))
+                    (Map W.PoolId (Quantity "lovelace" Word64)))
         queryNonMyopicMemberRewards pt = \case
+            AnyCardanoEra ByronEra -> do
+                let cmd = CmdQueryLocalState pt (QueryIfCurrentShelley (Shelley.GetNonMyopicMemberRewards stake))
+                result <- handleQueryFailure $ timeQryAndLog "GetNonMyopicMemberRewards" tr
+                    (queue `send` cmd)
+                return $ getRewardMap . fromNonMyopicMemberRewards <$> result
+
             AnyCardanoEra ShelleyEra -> do
                 let cmd = CmdQueryLocalState pt (QueryIfCurrentShelley (Shelley.GetNonMyopicMemberRewards stake))
                 result <- handleQueryFailure $ timeQryAndLog "GetNonMyopicMemberRewards" tr
                     (queue `send` cmd)
                 return $ getRewardMap . fromNonMyopicMemberRewards <$> result
 
-            _ -> do
+            AnyCardanoEra AllegraEra -> do
+                let cmd = CmdQueryLocalState pt (QueryIfCurrentAllegra (Shelley.GetNonMyopicMemberRewards stake))
+                result <- handleQueryFailure $ timeQryAndLog "GetNonMyopicMemberRewards" tr
+                    (queue `send` cmd)
+                return $ getRewardMap . fromNonMyopicMemberRewards <$> result
+
+            AnyCardanoEra MaryEra -> do
                 let cmd = CmdQueryLocalState pt (QueryIfCurrentMary (Shelley.GetNonMyopicMemberRewards stake))
                 result <- handleQueryFailure $ timeQryAndLog "GetNonMyopicMemberRewards" tr
                     (queue `send` cmd)
                 return $ getRewardMap . fromNonMyopicMemberRewards <$> result
+
           where
             stake :: Set (Either SL.Coin a)
             stake = Set.singleton $ Left $ toShelleyCoin coin
 
             fromJustRewards = fromMaybe
                 (error "stakeDistribution: requested rewards not included in response")
+
+            getRewardMap
+                :: Map
+                    (Either W.Coin W.RewardAccount)
+                    (Map W.PoolId (Quantity "lovelace" Word64))
+                -> Map W.PoolId (Quantity "lovelace" Word64)
             getRewardMap =
                 fromJustRewards . Map.lookup (Left coin)
 
@@ -779,7 +822,7 @@ mkTipSyncClient tr np localTxSubmissionQ onTipUpdate onPParamsUpdate onInterpret
                         CmdQueryLocalState pt (QueryAnytimeMary GetEraStart)
                 )
 
-            sp <- case era of
+            (sp :: Either AcquireFailure (Either (MismatchEraInfo (CardanoEras StandardCrypto)) W.SlottingParameters)) <- case era of
                 AnyCardanoEra ByronEra ->
                     pure $ pure $ pure $ W.slottingParameters np
 
@@ -788,7 +831,12 @@ mkTipSyncClient tr np localTxSubmissionQ onTipUpdate onPParamsUpdate onInterpret
                     gp <- timeQryAndLog "GetGenesisParams" tr $ localStateQueryQ `send` cmd
                     pure (fmap (slottingParametersFromGenesis . getCompactGenesis) <$> gp)
 
-                AnyCardanoEra _ -> do
+                AnyCardanoEra AllegraEra -> do
+                    let cmd = CmdQueryLocalState pt (QueryIfCurrentAllegra Shelley.GetGenesisConfig)
+                    gp <- timeQryAndLog "GetGenesisParams" tr $ localStateQueryQ `send` cmd
+                    pure (fmap (slottingParametersFromGenesis . getCompactGenesis) <$> gp)
+
+                AnyCardanoEra MaryEra -> do
                     let cmd = CmdQueryLocalState pt (QueryIfCurrentMary Shelley.GetGenesisConfig)
                     gp <- timeQryAndLog "GetGenesisParams" tr $ localStateQueryQ `send` cmd
                     pure (fmap (slottingParametersFromGenesis . getCompactGenesis) <$> gp)
@@ -827,7 +875,7 @@ mkTipSyncClient tr np localTxSubmissionQ onTipUpdate onPParamsUpdate onInterpret
         -- Perhaps both of these points towards @forAnyEra@ including `send`...
         _forAnyEra
             :: AnyCardanoEra
-            -> Query Byron.ByronBlock res
+            -> (Query Byron.ByronBlock res)
             -> (forall shelleyEra. Query (Shelley.ShelleyBlock (shelleyEra StandardCrypto)) res)
             -> Query
                 (CardanoBlock StandardCrypto)
