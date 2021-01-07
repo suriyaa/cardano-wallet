@@ -1142,14 +1142,8 @@ toAllegraTxOut (W.TxOut (W.Address addr) tokens) =
 
 toMaryTxOut :: W.TxOut -> Cardano.TxOut MaryEra
 toMaryTxOut (W.TxOut (W.Address addr) tokens) =
-    -- FIXME: Also convert non-ada tokens for full Mary-support.
-    Cardano.TxOut addrInEra
-        $ adaOnly
-        $ Cardano.lovelaceToValue
-        $ toCardanoLovelace
-        $ TokenBundle.coin tokens
+    Cardano.TxOut addrInEra $ toMaryValue tokens
   where
-    adaOnly = Cardano.TxOutValue Cardano.MultiAssetInMaryEra
     addrInEra = fromMaybe (error "toCardanoTxOut: malformed address") $
         asum
         [ Cardano.AddressInEra (Cardano.ShelleyAddressInEra Cardano.ShelleyBasedEraMary)
@@ -1158,6 +1152,23 @@ toMaryTxOut (W.TxOut (W.Address addr) tokens) =
         , Cardano.AddressInEra Cardano.ByronAddressInAnyEra
             <$> deserialiseFromRawBytes AsByronAddress addr
         ]
+
+    toMaryValue tb = let (coin, bundle) = TokenBundle.toFlatList tb in
+        Cardano.TxOutValue Cardano.MultiAssetInMaryEra $
+        Cardano.valueFromList $
+            (Cardano.AdaAssetId, coinToQuantity coin) :
+            map (bimap toCardanoAssetId toQuantity) bundle
+
+    toCardanoAssetId (TokenBundle.AssetId (W.TokenPolicyId pid) (W.TokenName name)) =
+        Cardano.AssetId
+            (Cardano.PolicyId (toScriptHash pid))
+            (Cardano.AssetName $ T.encodeUtf8 name)
+
+    toScriptHash :: W.Hash p -> Cardano.ScriptHash
+    toScriptHash = error "TODO: toMaryTxOut: Cardano.Api is missing a ScriptHash constructor"
+
+    coinToQuantity = fromIntegral . W.unCoin
+    toQuantity = fromIntegral . W.unTokenQuantity
 
 -- | Convert from reward account address (which is a hash of a public key)
 -- to a shelley ledger stake credential.
