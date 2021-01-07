@@ -82,6 +82,7 @@ library
     , quiet
     , random
     , random-shuffle
+    , resource-pool
     , retry
     , safe
     , scientific
@@ -391,7 +392,6 @@ benchmark db
     , fmt
     , iohk-monitoring
     , memory
-    , persistent-sqlite
     , random
     , temporary
     , text
