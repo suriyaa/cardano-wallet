@@ -147,7 +147,10 @@
             (hsPkgs."base16-bytestring" or (errorHandler.buildDepError "base16-bytestring"))
             (hsPkgs."cardano-api" or (errorHandler.buildDepError "cardano-api"))
             (hsPkgs."cardano-cli" or (errorHandler.buildDepError "cardano-cli"))
+            (hsPkgs."cardano-crypto-wrapper" or (errorHandler.buildDepError "cardano-crypto-wrapper"))
+            (hsPkgs."cardano-ledger" or (errorHandler.buildDepError "cardano-ledger"))
             (hsPkgs."cardano-prelude" or (errorHandler.buildDepError "cardano-prelude"))
+            (hsPkgs."cborg" or (errorHandler.buildDepError "cborg"))
             (hsPkgs."containers" or (errorHandler.buildDepError "containers"))
             (hsPkgs."deepseq" or (errorHandler.buildDepError "deepseq"))
             (hsPkgs."directory" or (errorHandler.buildDepError "directory"))
@@ -170,8 +173,8 @@
     } // {
     src = (pkgs.lib).mkDefault (pkgs.fetchgit {
       url = "https://github.com/input-output-hk/cardano-node";
-      rev = "289fab1ffcf7318188c06076ce0c500854131424";
-      sha256 = "0m4bkp4jnwzjn9i7m9rj8cbhcfdyvzh90060m9qlqwl3rfciw250";
+      rev = "d20e9eb7314f29d724e1aed674bb01aecaf0b940";
+      sha256 = "0frsbq0isblhki1540haa1b7rjjbagwn0nnpmj8f4y66harsmzp0";
       });
     postUnpack = "sourceRoot+=/cardano-cli; echo source root reset to \$sourceRoot";
     }

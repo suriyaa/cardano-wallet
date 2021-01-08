@@ -38,6 +38,7 @@
           (hsPkgs."cardano-prelude" or (errorHandler.buildDepError "cardano-prelude"))
           (hsPkgs."containers" or (errorHandler.buildDepError "containers"))
           (hsPkgs."hedgehog" or (errorHandler.buildDepError "hedgehog"))
+          (hsPkgs."shelley-spec-ledger" or (errorHandler.buildDepError "shelley-spec-ledger"))
           (hsPkgs."tasty" or (errorHandler.buildDepError "tasty"))
           (hsPkgs."tasty-hedgehog" or (errorHandler.buildDepError "tasty-hedgehog"))
           (hsPkgs."text" or (errorHandler.buildDepError "text"))
@@ -48,8 +49,8 @@
     } // {
     src = (pkgs.lib).mkDefault (pkgs.fetchgit {
       url = "https://github.com/input-output-hk/cardano-node";
-      rev = "289fab1ffcf7318188c06076ce0c500854131424";
-      sha256 = "0m4bkp4jnwzjn9i7m9rj8cbhcfdyvzh90060m9qlqwl3rfciw250";
+      rev = "d20e9eb7314f29d724e1aed674bb01aecaf0b940";
+      sha256 = "0frsbq0isblhki1540haa1b7rjjbagwn0nnpmj8f4y66harsmzp0";
       });
     postUnpack = "sourceRoot+=/cardano-api/test; echo source root reset to \$sourceRoot";
     }
