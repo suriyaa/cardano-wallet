@@ -1,3 +1,4 @@
+# cardano-node master from 2020-01-08
 name: cardano-1.25.0-pre
 
 resolver: lts-14.25
@@ -97,7 +98,7 @@ packages:
   - shelley-ma/impl
 
 - git: https://github.com/input-output-hk/cardano-node
-  commit: 289fab1ffcf7318188c06076ce0c500854131424
+  commit: e699e8746949bc561776f5f3675d573d53d2ffa2
   subdirs:
   - cardano-api
   - cardano-api/test
