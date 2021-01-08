@@ -1,4 +1,4 @@
-# cardano-node master from 2020-01-08
+# cardano-node dcoutts/api-serialise-policyid branch
 name: cardano-1.25.0-pre
 
 resolver: lts-14.25
@@ -98,7 +98,7 @@ packages:
   - shelley-ma/impl
 
 - git: https://github.com/input-output-hk/cardano-node
-  commit: e699e8746949bc561776f5f3675d573d53d2ffa2
+  commit: d20e9eb7314f29d724e1aed674bb01aecaf0b940
   subdirs:
   - cardano-api
   - cardano-api/test
