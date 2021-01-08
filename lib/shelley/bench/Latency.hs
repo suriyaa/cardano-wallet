@@ -414,7 +414,7 @@ withShelleyServer tracers action = do
 
     onClusterStart act db (RunningNode socketPath block0 (gp, vData)) = do
         listen <- walletListenFromEnv
-        setupFaucet dir
+        setupFaucet db
         serveWallet
             (SomeNetworkDiscriminant $ Proxy @'Mainnet)
             tracers
