@@ -904,8 +904,7 @@ fromMaryTx tx =
          :: SL.TxOut (Cardano.ShelleyLedgerEra MaryEra)
          -> W.TxOut
     fromMaryTxOut (SL.TxOut addr value) =
-       W.TxOut (fromShelleyAddress addr) (fromMaryValue value)
-
+        W.TxOut (fromShelleyAddress addr) (fromMaryValue value)
       where
         fromMaryValue (Mary.Value ada bundle) =
             TokenBundle.fromNestedList (unsafeCoin ada) $ filterEmpty $
@@ -919,8 +918,8 @@ fromMaryTx tx =
         filterEmpty xs = [ (a,b) | (a, Just b) <- map (fmap NE.nonEmpty) xs ]
 
         mkPolicyId (Mary.PolicyID (SL.ScriptHash p)) =
-            W.TokenPolicyId (W.Hash $ hashToBytes p)
-        mkTokenName (Mary.AssetName bs) = W.TokenName $
+            W.UnsafeTokenPolicyId (W.Hash $ hashToBytes p)
+        mkTokenName (Mary.AssetName bs) = W.UnsafeTokenName $
                   T.decodeUtf8With T.lenientDecode bs
 
         -- TODO: We should check for overflow!
@@ -1159,13 +1158,17 @@ toMaryTxOut (W.TxOut (W.Address addr) tokens) =
             (Cardano.AdaAssetId, coinToQuantity coin) :
             map (bimap toCardanoAssetId toQuantity) bundle
 
-    toCardanoAssetId (TokenBundle.AssetId (W.TokenPolicyId pid) (W.TokenName name)) =
-        Cardano.AssetId
-            (Cardano.PolicyId (toScriptHash pid))
-            (Cardano.AssetName $ T.encodeUtf8 name)
+    toCardanoAssetId (TokenBundle.AssetId pid name) =
+        Cardano.AssetId (toCardanoPolicyId pid) (toCardanoAssetName name)
 
-    toScriptHash :: W.Hash p -> Cardano.ScriptHash
-    toScriptHash = error "TODO: toMaryTxOut: Cardano.Api is missing a ScriptHash constructor"
+    toCardanoPolicyId (W.UnsafeTokenPolicyId (W.Hash pid)) = just "PolicyId" $
+        Cardano.deserialiseFromRawBytes Cardano.AsPolicyId pid
+    toCardanoAssetName (W.UnsafeTokenName name) = just "TokenName" $
+        Cardano.deserialiseFromRawBytes Cardano.AsAssetName $ T.encodeUtf8 name
+
+    just :: String -> Maybe a -> a
+    just t = fromMaybe $ error $
+        "toMaryTxOut: Internal error: unable to deserialise " ++ t
 
     coinToQuantity = fromIntegral . W.unCoin
     toQuantity = fromIntegral . W.unTokenQuantity
