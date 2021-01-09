@@ -61,10 +61,9 @@ import Cardano.Wallet.Shelley.Faucet
 import Cardano.Wallet.Shelley.Launch
     ( ClusterLog
     , RunningNode (..)
+    , localClusterConfigFromEnv
     , moveInstantaneousRewardsTo
-    , nodeMinSeverityFromEnv
     , oneMillionAda
-    , poolConfigsFromEnv
     , sendFaucetFundsTo
     , testLogDirFromEnv
     , testMinSeverityFromEnv
@@ -278,16 +277,9 @@ specWithServer testDir (tr, tracers) = aroundAll withContext
                 pure certificates
 
     withServer dbDecorator action = bracketTracer' tr "withServer" $ withSMASH tr' $ do
-        minSev <- nodeMinSeverityFromEnv
-        testPoolConfigs <- poolConfigsFromEnv
-        extraLogDir <- (fmap (,Info)) <$> testLogDirFromEnv
-        withCluster
-            tr'
-            minSev
-            testPoolConfigs
-            testDir
-            extraLogDir
-            (onClusterStart action dbDecorator)
+        clusterCfg <- localClusterConfigFromEnv
+        withCluster tr' testDir clusterCfg $
+            onClusterStart action dbDecorator
 
     tr' = contramap MsgCluster tr
     setupFaucet = do
