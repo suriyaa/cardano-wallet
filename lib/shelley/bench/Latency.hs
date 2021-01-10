@@ -60,8 +60,7 @@ import Cardano.Wallet.Shelley
 import Cardano.Wallet.Shelley.Faucet
     ( initFaucet )
 import Cardano.Wallet.Shelley.Launch
-    ( HardForkEra (..)
-    , LocalClusterConfig (..)
+    ( LocalClusterConfig (..)
     , LogFileConfig (..)
     , RunningNode (..)
     , sendFaucetFundsTo
@@ -403,7 +402,7 @@ withShelleyServer tracers action = do
             let db = dir </> "wallets"
             createDirectory db
             let logCfg = LogFileConfig Error Nothing Error
-            let clusterCfg = LocalClusterConfig [] (Just MaryHardFork) logCfg
+            let clusterCfg = LocalClusterConfig [] maxBound logCfg
             withCluster nullTracer dir clusterCfg $
                 onClusterStart act dir
 

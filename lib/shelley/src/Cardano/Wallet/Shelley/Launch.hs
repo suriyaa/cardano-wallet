@@ -26,7 +26,7 @@ module Cardano.Wallet.Shelley.Launch
       withCluster
     , LocalClusterConfig (..)
     , localClusterConfigFromEnv
-    , HardForkEra (..)
+    , ClusterEra (..)
 
       -- * Node launcher
     , NodeParams (..)
@@ -542,31 +542,36 @@ poolConfigsFromEnv = isEnvSet "NO_POOLS" <&> \case
     False -> defaultPoolConfigs
     True -> []
 
-localClusterConfigFromEnv :: IO LocalClusterConfig
-localClusterConfigFromEnv = LocalClusterConfig
+localClusterConfigFromEnv :: Maybe ClusterEra -> IO LocalClusterConfig
+localClusterConfigFromEnv defaultEra = LocalClusterConfig
     <$> poolConfigsFromEnv
-    <*> hardForkEraFromEnv
+    <*> clusterEraFromEnv defaultEra
     <*> logFileConfigFromEnv
 
-data HardForkEra = ShelleyHardFork | AllegraHardFork | MaryHardFork
+data ClusterEra
+    = ByronNoHardFork
+    | ShelleyHardFork
+    | AllegraHardFork
+    | MaryHardFork
     deriving (Show, Read, Eq, Ord, Bounded, Enum)
 
 -- | Defaults to the latest era.
-hardForkEraFromEnv :: IO (Maybe HardForkEra)
-hardForkEraFromEnv = getEra =<< lookupEnvNonEmpty var
+clusterEraFromEnv :: Maybe ClusterEra -> IO ClusterEra
+clusterEraFromEnv def =
+    fmap withDefault . traverse getEra =<< lookupEnvNonEmpty var
   where
-    var = "TEST_HARD_FORK_ERA"
-    getEra Nothing = pure $ Just maxBound
-    getEra (Just env) = case map toLower env of
-        "byron" -> pure Nothing
-        "shelley" -> pure $ Just ShelleyHardFork
-        "allegra" -> pure $ Just AllegraHardFork
-        "mary" -> pure $ Just MaryHardFork
+    var = "TEST_CLUSTER_ERA"
+    getEra env = case map toLower env of
+        "byron" -> pure ByronNoHardFork
+        "shelley" -> pure ShelleyHardFork
+        "allegra" -> pure AllegraHardFork
+        "mary" -> pure MaryHardFork
         _ -> die $ var ++ ": unknown era"
+    withDefault = fromMaybe (fromMaybe maxBound def)
 
-hardForkEraName :: Maybe HardForkEra -> String
-hardForkEraName Nothing = "byron"
-hardForkEraName (Just hardFork) = case hardFork of
+clusterEraName :: ClusterEra -> String
+clusterEraName = \case
+    ByronNoHardFork -> "byron"
     ShelleyHardFork -> "shelley"
     AllegraHardFork -> "allegra"
     MaryHardFork -> "mary"
@@ -574,7 +579,7 @@ hardForkEraName (Just hardFork) = case hardFork of
 data LocalClusterConfig = LocalClusterConfig
     { cfgStakePools :: [PoolConfig]
     -- ^ Stake pools to register.
-    , cfgLastHardFork :: Maybe HardForkEra
+    , cfgLastHardFork :: ClusterEra
     -- ^ Which era to use.
     , cfgNodeLogging :: LogFileConfig
     -- ^ Log severity for node.
@@ -615,7 +620,7 @@ withCluster
 withCluster tr dir LocalClusterConfig{..} onClusterStart =
     bracketTracer' tr "withCluster" $ do
         traceWith tr $ MsgStartingCluster dir
-        putHardForkEra dir cfgLastHardFork
+        putClusterEra dir cfgLastHardFork
         let poolCount = length cfgStakePools
         (port0:ports) <- randomUnusedTCPPorts (poolCount + 2)
         systemStart <- addUTCTime 1 <$> getCurrentTime
@@ -696,8 +701,8 @@ data LogFileConfig = LogFileConfig
 data NodeParams = NodeParams
     { systemStart :: UTCTime
       -- ^ Genesis block start time
-    , nodeHardForks :: Maybe HardForkEra
-      -- ^ Era to hard fork info.
+    , nodeHardForks :: ClusterEra
+      -- ^ Era to hard fork into.
     , nodePeers :: (Int, [Int])
       -- ^ A list of ports used by peers and this node
     , nodeLogConfig :: LogFileConfig
@@ -714,7 +719,7 @@ singleNodeParams severity extraLogFile = do
             , extraLogDir = fmap fst extraLogFile
             , minSeverityFile = maybe severity snd extraLogFile
             }
-    pure $ NodeParams systemStart (Just maxBound) (0, []) logCfg
+    pure $ NodeParams systemStart maxBound (0, []) logCfg
 
 withBFTNode
     :: Tracer IO ClusterLog
@@ -988,12 +993,12 @@ genConfig
     -- ^ A top-level directory where to put the configuration.
     -> UTCTime
     -- ^ Genesis block start time
-    -> Maybe HardForkEra
+    -> ClusterEra
     -- ^ Last era to hard fork into.
     -> LogFileConfig
     -- ^ Minimum severity level for logging and optional /extra/ logging output
     -> IO (FilePath, Block, NetworkParameters, NodeVersionData)
-genConfig dir systemStart hardForkEra logCfg = do
+genConfig dir systemStart clusterEra logCfg = do
     let LogFileConfig severity mExtraLogFile extraSev = logCfg
     let startTime = round @_ @Int . utcTimeToPOSIXSeconds $ systemStart
     let systemStart' = posixSecondsToUTCTime . fromRational . toRational $ startTime
@@ -1019,7 +1024,7 @@ genConfig dir systemStart hardForkEra logCfg = do
     Yaml.decodeFileThrow (source </> "node.config")
         >>= withAddedKey "ShelleyGenesisFile" shelleyGenesisFile
         >>= withAddedKey "ByronGenesisFile" byronGenesisFile
-        >>= withHardForks hardForkEra
+        >>= withHardForks clusterEra
         >>= withAddedKey "minSeverity" Debug
         >>= withScribes scribes
         >>= withObject (addMinSeverityStdout severity)
@@ -1087,7 +1092,7 @@ genConfig dir systemStart hardForkEra logCfg = do
       where
         hardForks =
             [ ("Test" <> T.pack (show hardFork) <> "AtEpoch", Yaml.Number 0)
-            | hardFork <- maybe [] (enumFromTo minBound) era ]
+            | hardFork <- [ShelleyHardFork .. era] ]
 
 -- | Generate a topology file from a list of peers.
 genTopology :: FilePath -> [Int] -> IO FilePath
@@ -1252,7 +1257,7 @@ issueDlgCert tr dir stakePub opPub = do
 -- automatically delegating 'pledge' amount to the given stake key.
 preparePoolRegistration
     :: Tracer IO ClusterLog
-    -> Maybe HardForkEra
+    -> ClusterEra
     -> FilePath
     -> FilePath
     -> [FilePath]
@@ -1304,7 +1309,7 @@ sendFaucetFundsTo tr dir allTargets = do
         let total = fromIntegral $ sum $ map (unCoin . snd) targets
         when (total > faucetAmt) $ error "sendFaucetFundsTo: too much to pay"
 
-        era <- getHardForkEra dir
+        era <- getClusterEra dir
         void $ cli tr $
             [ "transaction", "build-raw"
             , "--tx-in", faucetInput
@@ -1341,7 +1346,7 @@ moveInstantaneousRewardsTo tr dir targets = do
 
     sink <- genSinkAddress tr dir
 
-    era <- getHardForkEra dir
+    era <- getClusterEra dir
     void $ cli tr $
         [ "transaction", "build-raw"
         , "--tx-in", faucetInput
@@ -1391,7 +1396,7 @@ moveInstantaneousRewardsTo tr dir targets = do
 -- automatically delegating 'pledge' amount to the given stake key.
 prepareKeyRegistration
     :: Tracer IO ClusterLog
-    -> Maybe HardForkEra
+    -> ClusterEra
     -> FilePath
     -> IO (FilePath, FilePath)
 prepareKeyRegistration tr era dir = do
@@ -1484,7 +1489,7 @@ waitForSocket tr socketPath = do
     traceWith tr $ MsgSocketIsReady socketPath
 
 -- | Wait until a stake pool shows as registered on-chain.
-waitUntilRegistered :: Tracer IO ClusterLog -> String -> Maybe HardForkEra -> FilePath -> IO ()
+waitUntilRegistered :: Tracer IO ClusterLog -> String -> ClusterEra -> FilePath -> IO ()
 waitUntilRegistered tr name era opPub = do
     poolId <- init <$> cli tr
         [ "stake-pool", "id"
@@ -1639,14 +1644,14 @@ operators = unsafePerformIO $ newMVar
     ]
 {-# NOINLINE operators #-}
 
-cardanoCliEra :: Maybe HardForkEra -> String
-cardanoCliEra era = "--" ++ hardForkEraName era ++ "-era"
+cardanoCliEra :: ClusterEra -> String
+cardanoCliEra era = "--" ++ clusterEraName era ++ "-era"
 
-getHardForkEra :: FilePath -> IO (Maybe HardForkEra)
-getHardForkEra dir = read <$> readFile (dir </> "era")
+getClusterEra :: FilePath -> IO ClusterEra
+getClusterEra dir = read <$> readFile (dir </> "era")
 
-putHardForkEra :: FilePath -> Maybe HardForkEra -> IO ()
-putHardForkEra dir = writeFile (dir </> "era") . show
+putClusterEra :: FilePath -> ClusterEra -> IO ()
+putClusterEra dir = writeFile (dir </> "era") . show
 
 -- | A public stake key associated with a mnemonic that we pre-registered for
 -- STAKE_POOLS_JOIN_05.
